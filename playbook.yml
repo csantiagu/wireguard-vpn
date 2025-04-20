@@ -1,0 +1,119 @@
+- name: Install and configure WireGuard VPN
+  hosts: wireguard
+  become: yes
+  vars:
+    net_interface: enp3s0
+    wg_private_key_path: /etc/wireguard/privatekey
+    wg_public_key_path: /etc/wireguard/publickey
+    wg_private_key: "{{ lookup('file', wg_private_key_path) | default('', true) }}"
+    wg_public_key: "{{ lookup('file', wg_public_key_path) | default('', true) }}"
+
+  tasks:
+
+    - name: Install WireGuard
+      apt:
+        name: wireguard
+        state: present
+        update_cache: true
+
+    - name: Check if private key exists
+      stat:
+        path: "{{ wg_private_key_path }}"
+      register: wg_private_key_stat
+
+    - name: Check if public key exists
+      stat:
+        path: "{{ wg_public_key_path }}"
+      register: wg_public_key_stat
+
+    - name: Generate private key if not exists
+      shell: wg genkey > {{ wg_private_key_path }}
+      when: not wg_private_key_stat.stat.exists
+      register: wg_keygen
+      changed_when: true
+      become: true
+
+    - name: Set correct permissions for private key
+      file:
+        path: "{{ wg_private_key_path }}"
+        owner: root
+        group: root
+        mode: '0600'
+      when: wg_private_key_stat.stat.exists
+      become: true
+
+    - name: Generate public key from private key
+      shell: "cat {{ wg_private_key_path }} | wg pubkey > {{ wg_public_key_path }}"
+      register: wg_pubkeygen
+      when: not wg_public_key_stat.stat.exists
+      changed_when: true
+
+    - name: Set correct permissions for public key
+      file:
+        path: "{{ wg_public_key_path }}"
+        owner: root
+        group: root
+        mode: '0600'
+      when: wg_public_key_stat.stat.exists
+      become: true
+
+    - name: Read private key after generation
+      slurp:
+        src: "{{ wg_private_key_path }}"
+      register: privkey_file
+      when: wg_public_key_stat.stat.exists
+
+    - set_fact:
+        wg_private_key: "{{ privkey_file.content | b64decode }}"
+      when: wg_private_key_stat.stat.exists
+
+    - name: Create WireGuard config
+      template:
+        src: wg0.conf.j2
+        dest: /etc/wireguard/wg0.conf
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Enable and start WireGuard
+      systemd:
+        name: wg-quick@wg0
+        enabled: yes
+        state: started
+
+    - name: Allow WireGuard port through UFW
+      ufw:
+        rule: allow
+        port: 51820
+        proto: udp
+
+    - name: Set UFW default deny policies
+      ufw:
+        direction: "{{ item }}"
+        policy: deny
+      loop:
+        - incoming
+        - outgoing
+
+    - name: Allow outgoing traffic on interface
+      ufw:
+        rule: allow
+        direction: out
+        interface: "{{ net_interface }}"
+
+    - name: Allow incoming traffic wg0 interface
+      ufw:
+        rule: allow
+        direction: in
+        interface: wg0
+        
+    - name: Allow outgoing traffic on wg0 interface
+      ufw:
+        rule: allow
+        direction: out
+        interface: wg0
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+
