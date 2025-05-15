@@ -26,6 +26,18 @@
         path: /etc/default/ufw
         regexp: '^DEFAULT_FORWARD_POLICY=.*'
         replace: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+        
+    - name: Allow SSH through UFW before enabling it
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: Allow WireGuard UDP port
+      ufw:
+        rule: allow
+        port: '51820'
+        proto: udp
 
     - name: Insert NAT rules properly in before.rules
       blockinfile:
