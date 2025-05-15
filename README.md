@@ -100,7 +100,7 @@ This will:
 To generate a client config for any OS (e.g., Windows), pass the peer details as variables:
 
 ```bash
-ansible-playbook -i inventory playbook.yml   --tags client   -e "client_name=win01 client_address=10.0.0.2"
+ansible-playbook -i inventory ./wireguard-vpn/clients/client_config.yml -e client_name=macbook -e client_ip=10.0.0.2/32
 ```
 
 🗂 Output: Client `.conf` will be saved locally or printed (you can redirect or store it as needed).
